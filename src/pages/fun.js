@@ -1,7 +1,7 @@
 import state from '../state.js';
 import { PROPS, NUM_PROPS } from '../constants.js';
 import { show, isCommissioner, perPropPot, fmtTime } from '../utils.js';
-import { getAllPropPicks, getPropResults, getTrash, postTrashMessage, savePropResults } from '../supabase.js';
+import { getAllPropPicks, getPropResults, savePropResults } from '../supabase.js';
 
 export async function showFun() {
   clearInterval(state.lbTimer);
@@ -25,14 +25,12 @@ export async function showFun() {
 }
 
 export function showFunSection(section) {
-  var sections = ["props", "rules", "trash"];
-  sections.forEach(function(s) {
+  ["props", "rules"].forEach(function(s) {
     document.getElementById("fun-" + s).style.display = s === section ? "block" : "none";
     var btn = document.getElementById("fsn-" + s);
-    if (btn) { btn.classList.toggle("active", s === section); }
+    if (btn) btn.classList.toggle("active", s === section);
   });
   if (section === "props") renderPropsView();
-  if (section === "trash") loadTrash();
 }
 
 export function renderPropsView() {
@@ -228,28 +226,3 @@ function calculateAndShowPayouts(results) {
   document.getElementById("payout-section").style.display = "block";
 }
 
-export async function loadTrash() {
-  if (!state.poolId) { renderTrash([]); return; }
-  try {
-    const data = await getTrash(state.poolId);
-    renderTrash(data);
-  } catch(e) { renderTrash([]); }
-}
-
-export function renderTrash(msgs) {
-  if (!msgs.length) { document.getElementById("trash-list").innerHTML = '<div class="trash-empty">No trash talk yet &mdash; start something &#128526;</div>'; return; }
-  document.getElementById("trash-list").innerHTML = msgs.map(function(m) {
-    var author = (m.pool_players && m.pool_players.display_name) || "Unknown";
-    return "<div class='trash-msg'><div class='trash-meta'><span class='trash-author'>" + author + "</span><span class='trash-time'>" + fmtTime(m.created_at) + "</span></div><div class='trash-text'>" + m.text.replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</div></div>";
-  }).join("");
-}
-
-export async function postTrash() {
-  var inp = document.getElementById("trash-msg-in"), text = inp.value.trim();
-  if (!text || !state.poolId) return;
-  inp.value = "";
-  try {
-    await postTrashMessage(state.poolId, text);
-    await loadTrash();
-  } catch(e) { console.error('postTrash failed:', e); }
-}

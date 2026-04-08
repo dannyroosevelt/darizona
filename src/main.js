@@ -9,7 +9,7 @@ import { startPicking, startPropPicking, submitPicks, renderTiers, toggleTier, t
 import { showPropPicks, submitPropPicks, setPropPick } from './pages/propPicks.js';
 import { showLeaderboard, loadLeaderboard } from './pages/leaderboard.js';
 import { showSummary, copyLink, exportCSV } from './pages/summary.js';
-import { showFun, showFunSection, showResultsEntry, saveResults, setResult, postTrash } from './pages/fun.js';
+import { showFun, showFunSection, showResultsEntry, saveResults, setResult } from './pages/fun.js';
 
 // ── STATIC BUTTON LISTENERS ───────────────────────────────────────────────────
 
@@ -17,7 +17,6 @@ document.getElementById('submit-picks-btn').addEventListener('click', submitPick
 document.getElementById('submit-prop-picks-btn').addEventListener('click', submitPropPicks);
 document.getElementById('create-btn').addEventListener('click', createPool);
 document.getElementById('export-btn').addEventListener('click', exportCSV);
-document.getElementById('trash-send-btn').addEventListener('click', postTrash);
 document.getElementById('pick-back-btn').addEventListener('click', showJoin);
 document.getElementById('prop-picks-back-btn').addEventListener('click', showJoin);
 document.getElementById('copy-link-btn').addEventListener('click', function() { copyLink(this); });
@@ -27,7 +26,6 @@ document.getElementById('join-btn').addEventListener('click', joinPoolFlow);
 document.getElementById('add-golfer-btn').addEventListener('click', addGolfer);
 
 // Input / form listeners
-document.getElementById('trash-msg-in').addEventListener('keydown', function(e) { if (e.key === 'Enter') postTrash(); });
 document.getElementById('in-join-name').addEventListener('keydown', function(e) { if (e.key === 'Enter') joinPoolFlow(); });
 document.getElementById('in-golfer-name').addEventListener('keydown', function(e) { if (e.key === 'Enter') addGolfer(); });
 document.getElementById('in-buyin').addEventListener('input', refreshPot);
@@ -76,7 +74,6 @@ document.getElementById('results-form').addEventListener('click', function(e) {
 
 document.getElementById('fsn-props').addEventListener('click', function() { showFunSection('props'); });
 document.getElementById('fsn-rules').addEventListener('click', function() { showFunSection('rules'); });
-document.getElementById('fsn-trash').addEventListener('click', function() { showFunSection('trash'); });
 
 // ── BOOT ─────────────────────────────────────────────────────────────────────
 
