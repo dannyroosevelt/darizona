@@ -52,7 +52,7 @@ export function fetchESPN() {
         var cStatusName = (c.status && c.status.name) || (c.status && c.status.type && c.status.type.name) || "";
         var posStr = (c.status && c.status.position && c.status.position.displayName) || "--";
         var isCut = cStatusName.indexOf("CUT") !== -1 || cStatusName.indexOf("WD") !== -1 || cStatusName.indexOf("DQ") !== -1 || posStr === "CUT" || score === "CUT";
-        var thru = (c.status && c.status.displayValue) || "--";
+        var thru = ((c.status && c.status.displayValue) || "--").replace(/^Thru\s+/i, "");
         var ls = c.linescores || [], rounds = ["--", "--", "--", "--"];
         for (var r = 0; r < Math.min(ls.length, 4); r++) rounds[r] = (ls[r].displayValue || ls[r].value || "--").toString();
         var posNum = 999;
