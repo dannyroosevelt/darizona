@@ -48,11 +48,23 @@ export function fetchESPN() {
         // Flat format (scoreboard): c.displayName, c.score (string), c.place (number), c.status.name
         // Nested format (leaderboard): c.athlete.displayName, c.score.displayValue, c.status.type.name, c.status.position.displayName
         var name = c.displayName || (c.athlete && c.athlete.displayName) || "";
-        var score = (typeof c.score === "string" ? c.score : (c.score && c.score.displayValue)) || "E";
+        // ESPN sets c.score.displayValue to "E" for all in-progress players in the full leaderboard format.
+        // The real to-par score lives in c.statistics[].name === "scoreToPar".
+        var stats = c.statistics || [];
+        var scoreToParStat = null;
+        for (var si = 0; si < stats.length; si++) { if (stats[si].name === "scoreToPar") { scoreToParStat = stats[si]; break; } }
+        var score = scoreToParStat
+          ? scoreToParStat.displayValue
+          : (typeof c.score === "string" ? c.score : (c.score && c.score.displayValue)) || "E";
         var cStatusName = (c.status && c.status.name) || (c.status && c.status.type && c.status.type.name) || "";
         var posStr = (c.status && c.status.position && c.status.position.displayName) || "--";
         var isCut = cStatusName.indexOf("CUT") !== -1 || cStatusName.indexOf("WD") !== -1 || cStatusName.indexOf("DQ") !== -1 || posStr === "CUT" || score === "CUT";
-        var thru = ((c.status && c.status.displayValue) || "--").replace(/^Thru\s+/i, "");
+        // Use displayThru (just the number) when available to avoid stripping "Thru " from displayValue.
+        var thru = "--";
+        if (c.status) {
+          if (c.status.displayThru != null) thru = String(c.status.displayThru);
+          else if (c.status.displayValue) thru = c.status.displayValue.replace(/^Thru\s+/i, "");
+        }
         var ls = c.linescores || [], rounds = ["--", "--", "--", "--"];
         for (var r = 0; r < Math.min(ls.length, 4); r++) rounds[r] = (ls[r].displayValue || ls[r].value || "--").toString();
         var posNum = 999;
