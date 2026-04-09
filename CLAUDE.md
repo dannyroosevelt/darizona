@@ -95,4 +95,4 @@ Generated HTML uses `data-action` + `data-*` instead of `onclick`. Containers li
 npm run build    # outputs to dist/
 ```
 
-GitHub Pages: push `dist/` or configure Pages to build from `main` branch using Vite.
+Vercel: push to `main` — Vercel auto-deploys via the Vite build output in `dist/`.
