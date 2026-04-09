@@ -1,7 +1,7 @@
 import state from '../state.js';
 import { TIERS, PROPS } from '../constants.js';
 import { show } from '../utils.js';
-import { getPoolPlayers, joinPool, getMyPicks, getMyPropPicks } from '../supabase.js';
+import { getPoolPlayers } from '../supabase.js';
 
 export function renderJoinPage() {
   var pool = state.poolData;
@@ -63,32 +63,4 @@ export async function showJoin() {
   }
   renderJoinPage();
   show("pg-join");
-}
-
-export async function joinPoolFlow() {
-  var nameInp = document.getElementById("in-join-name");
-  var name = nameInp ? nameInp.value.trim() : "";
-  if (!name) { alert("Enter your name"); return; }
-  var btn = document.getElementById("join-btn");
-  btn.innerHTML = '<div class="spin"></div> Joining...'; btn.disabled = true;
-  try {
-    await joinPool(state.poolId, name);
-    state.displayName = name;
-    const players = await getPoolPlayers(state.poolId);
-    state.players = players;
-    const rows = await getMyPicks(state.poolId);
-    state.myPicks = {};
-    state.myPicksSubmitted = rows.length === 6 && rows.every(r => r.submitted);
-    rows.forEach(r => { state.myPicks[r.tier] = r.golfer_name; });
-    const propRows = await getMyPropPicks(state.poolId);
-    state.myPropPicks = {};
-    state.myPropPicksSubmitted = propRows.length > 0 && propRows.every(r => r.submitted);
-    propRows.forEach(r => { state.myPropPicks[r.prop_id] = r.value; });
-    renderJoinPage();
-    show("pg-join");
-  } catch(e) {
-    console.error('joinPool failed:', e);
-    btn.innerHTML = "Join pool &rarr;"; btn.disabled = false;
-    alert("Could not join pool.\n\n" + (e.message || JSON.stringify(e)));
-  }
 }

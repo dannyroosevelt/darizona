@@ -1,10 +1,9 @@
 import './style.css';
 import state from './state.js';
-import { supabase, getPool, getPoolPlayers, getMyPicks, getMyPropPicks, getAllPicks, getAllPropPicks, getPropResults } from './supabase.js';
+import { getPool, getPoolPlayers, getMyPicks, getMyPropPicks, getAllPicks, getAllPropPicks, getPropResults } from './supabase.js';
 import { getParam, show } from './utils.js';
 import { showAuth, initAuth } from './pages/auth.js';
-import { addGolfer, removeGolfer, refreshPot, createPool } from './pages/create.js';
-import { showJoin, renderJoinPage, joinPoolFlow } from './pages/join.js';
+import { showJoin, renderJoinPage } from './pages/join.js';
 import { startPicking, startPropPicking, submitPicks, renderPickPage, renderTiers, toggleTier, togglePick } from './pages/picks.js';
 import { showPropPicks, submitPropPicks, setPropPick } from './pages/propPicks.js';
 import { showLeaderboard, loadLeaderboard } from './pages/leaderboard.js';
@@ -13,24 +12,26 @@ import { showFun, showFunSection, showResultsEntry, saveResults, setResult } fro
 
 // ── STATIC BUTTON LISTENERS ───────────────────────────────────────────────────
 
-document.getElementById('submit-picks-btn').addEventListener('click', submitPicks);
-document.getElementById('submit-prop-picks-btn').addEventListener('click', submitPropPicks);
-document.getElementById('create-btn').addEventListener('click', createPool);
-document.getElementById('export-btn').addEventListener('click', exportCSV);
-document.getElementById('pick-back-btn').addEventListener('click', showJoin);
-document.getElementById('prop-picks-back-btn').addEventListener('click', showJoin);
-document.getElementById('copy-link-btn').addEventListener('click', function() { copyLink(this); });
-document.getElementById('enter-results-btn').addEventListener('click', showResultsEntry);
-document.getElementById('save-results-btn').addEventListener('click', saveResults);
-document.getElementById('join-btn').addEventListener('click', joinPoolFlow);
-document.getElementById('add-golfer-btn').addEventListener('click', addGolfer);
+const submitPicksBtn = document.getElementById('submit-picks-btn');
+if (submitPicksBtn) submitPicksBtn.addEventListener('click', submitPicks);
+const submitPropBtn = document.getElementById('submit-prop-picks-btn');
+if (submitPropBtn) submitPropBtn.addEventListener('click', submitPropPicks);
+const exportBtn = document.getElementById('export-btn');
+if (exportBtn) exportBtn.addEventListener('click', exportCSV);
+const pickBackBtn = document.getElementById('pick-back-btn');
+if (pickBackBtn) pickBackBtn.addEventListener('click', showJoin);
+const propBackBtn = document.getElementById('prop-picks-back-btn');
+if (propBackBtn) propBackBtn.addEventListener('click', showJoin);
+const copyLinkBtn = document.getElementById('copy-link-btn');
+if (copyLinkBtn) copyLinkBtn.addEventListener('click', function() { copyLink(this); });
+const enterResultsBtn = document.getElementById('enter-results-btn');
+if (enterResultsBtn) enterResultsBtn.addEventListener('click', showResultsEntry);
+const saveResultsBtn = document.getElementById('save-results-btn');
+if (saveResultsBtn) saveResultsBtn.addEventListener('click', saveResults);
 
 // Input / form listeners
-document.getElementById('in-join-name').addEventListener('keydown', function(e) { if (e.key === 'Enter') joinPoolFlow(); });
-document.getElementById('in-golfer-name').addEventListener('keydown', function(e) { if (e.key === 'Enter') addGolfer(); });
-document.getElementById('in-buyin').addEventListener('input', refreshPot);
-document.getElementById('in-prop-buyin').addEventListener('input', refreshPot);
-document.getElementById('pick-search').addEventListener('input', renderTiers);
+const pickSearch = document.getElementById('pick-search');
+if (pickSearch) pickSearch.addEventListener('input', renderTiers);
 
 // ── NAV TAB DELEGATION ────────────────────────────────────────────────────────
 
@@ -48,11 +49,6 @@ document.getElementById('name-list').addEventListener('click', function(e) {
   if (!btn) return;
   if (btn.dataset.action === 'startPicking') startPicking();
   if (btn.dataset.action === 'startPropPicking') startPropPicking();
-});
-
-document.getElementById('golfer-tags').addEventListener('click', function(e) {
-  var btn = e.target.closest('[data-action="removeGolfer"]');
-  if (btn) removeGolfer(+btn.dataset.index);
 });
 
 document.getElementById('tier-list').addEventListener('click', function(e) {
@@ -78,6 +74,7 @@ document.getElementById('fsn-rules').addEventListener('click', function() { show
 // ── BOOT ─────────────────────────────────────────────────────────────────────
 
 initAuth();
+document.addEventListener('pin-login', function() { init(); });
 
 function restoreLastPage() {
   const lastPage = localStorage.getItem("last_page");
@@ -129,39 +126,11 @@ async function loadPool(poolId) {
 }
 
 let initInFlight = null;
-let initRetryCount = 0;
-const MAX_INIT_RETRIES = 5;
-const INIT_RETRY_BASE_MS = 200;
-const SESSION_TIMEOUT_MS = 3000;
 
-function isAuthLockError(err) {
-  const msg = (err && (err.message || err.error || err)) + '';
-  return msg.includes('NavigatorLockAcquireTimeoutError') || msg.includes('auth-token') || msg.includes('lock:sb-') || msg.includes('auth-timeout');
-}
-
-function withTimeout(promise, ms, label) {
-  let t;
-  const timeout = new Promise((_, reject) => {
-    t = setTimeout(() => reject(new Error(label + '-timeout')), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
-}
-
-async function init(sessionOverride) {
+async function init() {
   if (initInFlight) return initInFlight;
   initInFlight = (async () => {
     try {
-      const session = sessionOverride
-        ?? (await withTimeout(supabase.auth.getSession(), SESSION_TIMEOUT_MS, 'auth')).data.session;
-
-      if (!session) {
-        showAuth();
-        return;
-      }
-
-      state.userId = session.user.id;
-      state.userEmail = session.user.email;
-
       const urlPool = getParam('pool');
       if (urlPool) {
         localStorage.setItem('last_pool_token', urlPool);
@@ -179,30 +148,37 @@ async function init(sessionOverride) {
         state.poolId = pool.id;
         state.poolData = pool;
 
+        const savedPoolId = localStorage.getItem('pin_pool_id');
+        const savedUserId = localStorage.getItem('pin_user_id');
+        const savedName = localStorage.getItem('pin_display_name');
+        if (!savedUserId || savedPoolId !== pool.id) {
+          showAuth();
+          return;
+        }
+
+        state.userId = savedUserId;
+        state.userEmail = null;
+        state.displayName = savedName || null;
+
         const players = await getPoolPlayers(pool.id);
         state.players = players;
         const me = players.find(p => p.user_id === state.userId);
 
         if (me) {
-          state.displayName = me.display_name;
+          state.displayName = me.display_name || state.displayName;
           await loadPool(pool.id);
           restoreLastPage();
         } else {
-          // Signed in but not yet in this pool — show join form
-          show('pg-pool-join');
+          localStorage.removeItem('pin_user_id');
+          localStorage.removeItem('pin_display_name');
+          localStorage.removeItem('pin_pool_id');
+          showAuth();
         }
       } else {
-        show('pg-create');
+        showAuth();
       }
-      initRetryCount = 0;
     } catch(e) {
       console.error('init() failed:', e);
-      if (isAuthLockError(e) && initRetryCount < MAX_INIT_RETRIES) {
-        initRetryCount += 1;
-        const delay = INIT_RETRY_BASE_MS * initRetryCount;
-        setTimeout(() => init(sessionOverride), delay);
-        return;
-      }
       show('pg-auth');
     }
   })();
@@ -214,16 +190,4 @@ async function init(sessionOverride) {
   }
 }
 
-// Handle auth state changes (magic link callback + initial session).
-const authGlobal = typeof window !== 'undefined' ? window : globalThis;
-if (authGlobal.__darizonaAuthUnsub) authGlobal.__darizonaAuthUnsub();
-const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-  if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-    // Defer init to avoid calling Supabase methods inside the auth callback lock.
-    setTimeout(() => { init(session); }, 0);
-  }
-});
-authGlobal.__darizonaAuthUnsub = () => subscription.unsubscribe();
-
-// Fallback if INITIAL_SESSION doesn't fire (e.g., tab restore quirks).
-setTimeout(() => { init(); }, 800);
+init();

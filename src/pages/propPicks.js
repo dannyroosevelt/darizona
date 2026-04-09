@@ -23,7 +23,7 @@ export function renderPropPickScreen() {
     submitBtn.style.background = "";
     banner.style.display = "none";
   }
-  var players = ((state.poolData && state.poolData.golfers) || []).map(function(g) { return g.name; });
+  var players = (state.players || []).map(function(p) { return p.display_name; });
   var html = "";
   PROPS.forEach(function(prop) {
     var myVal = state.myPropPicks[prop.id];
@@ -35,7 +35,7 @@ export function renderPropPickScreen() {
     html += "<div class='prop-body'>";
     if (prop.type === "player") {
       html += "<select id='pp-" + prop.id + "' " + (locked ? "disabled" : "") + " style='background:" + (myVal ? "#E8F3EC" : "var(--sand)") + ";border-color:" + (myVal ? "var(--green2)" : "var(--border)") + "'>";
-      html += "<option value=''>-- Pick a player --</option>";
+      html += "<option value=''>-- Pick a donk --</option>";
       players.forEach(function(p) { html += "<option value='" + p.replace(/"/g, "&quot;") + "'" + (myVal === p ? " selected" : "") + ">" + p + "</option>"; });
       html += "</select>";
     } else if (prop.type === "number") {
