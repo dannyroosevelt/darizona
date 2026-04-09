@@ -5,7 +5,7 @@ import { getParam, show } from './utils.js';
 import { showAuth, initAuth } from './pages/auth.js';
 import { addGolfer, removeGolfer, refreshPot, createPool } from './pages/create.js';
 import { showJoin, renderJoinPage, joinPoolFlow } from './pages/join.js';
-import { startPicking, startPropPicking, submitPicks, renderTiers, toggleTier, togglePick } from './pages/picks.js';
+import { startPicking, startPropPicking, submitPicks, renderPickPage, renderTiers, toggleTier, togglePick } from './pages/picks.js';
 import { showPropPicks, submitPropPicks, setPropPick } from './pages/propPicks.js';
 import { showLeaderboard, loadLeaderboard } from './pages/leaderboard.js';
 import { showSummary, copyLink, exportCSV } from './pages/summary.js';
@@ -79,14 +79,30 @@ document.getElementById('fsn-rules').addEventListener('click', function() { show
 
 initAuth();
 
+function restoreLastPage() {
+  const lastPage = localStorage.getItem("last_page");
+  const allowed = new Set(["pg-join", "pg-leaderboard", "pg-summary", "pg-fun", "pg-pick", "pg-prop-picks"]);
+  if (!allowed.has(lastPage)) {
+    renderJoinPage();
+    show('pg-join');
+    return;
+  }
+  if (lastPage === "pg-leaderboard") return showLeaderboard();
+  if (lastPage === "pg-summary") return showSummary();
+  if (lastPage === "pg-fun") return showFun();
+  if (lastPage === "pg-pick") { renderPickPage(); return show('pg-pick'); }
+  if (lastPage === "pg-prop-picks") return showPropPicks();
+  renderJoinPage();
+  show('pg-join');
+}
+
 async function loadPool(poolId) {
-  const [rows, propRows, allPickRows, allPropRows, resultRows] = await Promise.all([
-    getMyPicks(poolId),
-    getMyPropPicks(poolId),
-    getAllPicks(poolId),
-    getAllPropPicks(poolId),
-    getPropResults(poolId),
-  ]);
+  // Run sequentially to avoid concurrent auth refresh lock contention.
+  const rows = await getMyPicks(poolId);
+  const propRows = await getMyPropPicks(poolId);
+  const allPickRows = await getAllPicks(poolId);
+  const allPropRows = await getAllPropPicks(poolId);
+  const resultRows = await getPropResults(poolId);
 
   state.myPicks = {};
   state.myPicksSubmitted = rows.length === 6 && rows.every(r => r.submitted);
@@ -112,56 +128,102 @@ async function loadPool(poolId) {
   resultRows.forEach(r => { state.propResults[r.prop_id] = r.value; });
 }
 
-async function init() {
-  try {
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
+let initInFlight = null;
+let initRetryCount = 0;
+const MAX_INIT_RETRIES = 5;
+const INIT_RETRY_BASE_MS = 200;
+const SESSION_TIMEOUT_MS = 3000;
 
-    if (!session) {
-      showAuth();
-      return;
-    }
+function isAuthLockError(err) {
+  const msg = (err && (err.message || err.error || err)) + '';
+  return msg.includes('NavigatorLockAcquireTimeoutError') || msg.includes('auth-token') || msg.includes('lock:sb-') || msg.includes('auth-timeout');
+}
 
-    state.userId = session.user.id;
-    state.userEmail = session.user.email;
+function withTimeout(promise, ms, label) {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => reject(new Error(label + '-timeout')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
 
-    const shareToken = getParam('pool');
+async function init(sessionOverride) {
+  if (initInFlight) return initInFlight;
+  initInFlight = (async () => {
+    try {
+      const session = sessionOverride
+        ?? (await withTimeout(supabase.auth.getSession(), SESSION_TIMEOUT_MS, 'auth')).data.session;
 
-    if (shareToken) {
-      state.shareToken = shareToken;
-      const pool = await getPool(shareToken);
-      state.poolId = pool.id;
-      state.poolData = pool;
-
-      const players = await getPoolPlayers(pool.id);
-      state.players = players;
-      const me = players.find(p => p.user_id === state.userId);
-
-      if (me) {
-        state.displayName = me.display_name;
-        await loadPool(pool.id);
-        renderJoinPage();
-        show('pg-join');
-      } else {
-        // Signed in but not yet in this pool — show join form
-        show('pg-pool-join');
+      if (!session) {
+        showAuth();
+        return;
       }
-    } else {
-      show('pg-create');
+
+      state.userId = session.user.id;
+      state.userEmail = session.user.email;
+
+      const urlPool = getParam('pool');
+      if (urlPool) {
+        localStorage.setItem('last_pool_token', urlPool);
+      }
+      const shareToken = urlPool || localStorage.getItem('last_pool_token');
+      if (!urlPool && shareToken) {
+        const u = new URL(window.location.href);
+        u.searchParams.set("pool", shareToken);
+        window.history.replaceState({}, "", u.toString());
+      }
+
+      if (shareToken) {
+        state.shareToken = shareToken;
+        const pool = await getPool(shareToken);
+        state.poolId = pool.id;
+        state.poolData = pool;
+
+        const players = await getPoolPlayers(pool.id);
+        state.players = players;
+        const me = players.find(p => p.user_id === state.userId);
+
+        if (me) {
+          state.displayName = me.display_name;
+          await loadPool(pool.id);
+          restoreLastPage();
+        } else {
+          // Signed in but not yet in this pool — show join form
+          show('pg-pool-join');
+        }
+      } else {
+        show('pg-create');
+      }
+      initRetryCount = 0;
+    } catch(e) {
+      console.error('init() failed:', e);
+      if (isAuthLockError(e) && initRetryCount < MAX_INIT_RETRIES) {
+        initRetryCount += 1;
+        const delay = INIT_RETRY_BASE_MS * initRetryCount;
+        setTimeout(() => init(sessionOverride), delay);
+        return;
+      }
+      show('pg-auth');
     }
-  } catch(e) {
-    console.error('init() failed:', e);
-    show('pg-auth');
+  })();
+
+  try {
+    await initInFlight;
+  } finally {
+    initInFlight = null;
   }
 }
 
-// Handle auth state changes (magic link callback fires this)
-// INITIAL_SESSION fires on page load — let init() handle that.
-// Only re-run init on a new SIGNED_IN event (magic link click).
-supabase.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN') {
-    await init();
+// Handle auth state changes (magic link callback + initial session).
+const authGlobal = typeof window !== 'undefined' ? window : globalThis;
+if (authGlobal.__darizonaAuthUnsub) authGlobal.__darizonaAuthUnsub();
+const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+    // Defer init to avoid calling Supabase methods inside the auth callback lock.
+    setTimeout(() => { init(session); }, 0);
   }
 });
+authGlobal.__darizonaAuthUnsub = () => subscription.unsubscribe();
 
-init();
+// Fallback if INITIAL_SESSION doesn't fire (e.g., tab restore quirks).
+setTimeout(() => { init(); }, 800);

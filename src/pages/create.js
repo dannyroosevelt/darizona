@@ -76,6 +76,7 @@ export async function createPool() {
     state.poolId = pool.id;
     state.poolData = pool;
     state.shareToken = pool.share_token;
+    localStorage.setItem('last_pool_token', pool.share_token);
 
     console.log('[create] calling addCommissioner');
     await addCommissioner(pool.id, adminName);
@@ -87,9 +88,16 @@ export async function createPool() {
     const withEmails = golfers.filter(function(g) { return g.email; });
     if (withEmails.length) {
       btn.innerHTML = '<div class="spin"></div> Sending invites...';
-      await Promise.allSettled(
+      const inviteResults = await Promise.allSettled(
         withEmails.map(function(g) { return invitePlayer(g.email, pool.share_token); })
       );
+      const failed = inviteResults
+        .map(function(r, i) { return r.status === 'rejected' ? withEmails[i].email : null; })
+        .filter(Boolean);
+      if (failed.length) {
+        console.warn('Invite failures:', failed);
+        alert("Pool created! But invites failed for:\n" + failed.join("\n") + "\n\nMake sure your Vercel URL is in Supabase → Auth → URL Configuration → Redirect URLs.");
+      }
     }
 
     var u = new URL(window.location.href);

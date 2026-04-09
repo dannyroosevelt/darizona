@@ -5,6 +5,9 @@ export function show(id) {
   document.querySelectorAll(".page").forEach(function(p) { p.classList.remove("on"); });
   document.getElementById(id).classList.add("on");
   window.scrollTo(0, 0);
+  if (id !== "pg-auth" && id !== "pg-load") {
+    try { localStorage.setItem("last_page", id); } catch (_) {}
+  }
 }
 
 export function getParam(k) { return new URLSearchParams(window.location.search).get(k); }

@@ -4,7 +4,54 @@ import state from './state.js';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Ensure a single client instance across Vite HMR reloads.
+const globalScope = typeof window !== 'undefined' ? window : globalThis;
+
+function inProcessLock(name, acquireTimeout, fn) {
+  const locks = globalScope.__darizonaAuthLocks || (globalScope.__darizonaAuthLocks = new Map());
+  const prev = locks.get(name) || Promise.resolve();
+  let release;
+  const next = new Promise((res) => { release = res; });
+  locks.set(name, prev.then(() => next));
+
+  let timeoutId;
+  const timeoutPromise = acquireTimeout >= 0
+    ? new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const err = new Error('Lock acquire timeout');
+          err.isAcquireTimeout = true;
+          reject(err);
+        }, acquireTimeout);
+      })
+    : null;
+
+  const waitForTurn = timeoutPromise ? Promise.race([prev, timeoutPromise]) : prev;
+
+  return waitForTurn.then(async () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (locks.get(name) === next) locks.delete(name);
+    }
+  }, (err) => {
+    // Timed out before acquiring the lock; clean up our queue entry.
+    release();
+    if (locks.get(name) === next) locks.delete(name);
+    if (timeoutId) clearTimeout(timeoutId);
+    throw err;
+  });
+}
+
+if (!globalScope.__darizonaSupabase) {
+  globalScope.__darizonaSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      lock: inProcessLock,
+    },
+  });
+}
+export const supabase = globalScope.__darizonaSupabase;
 
 // Use state.userId instead of a network round-trip to getUser() on every call.
 function uid() {
