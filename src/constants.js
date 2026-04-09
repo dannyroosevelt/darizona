@@ -1,4 +1,4 @@
-export var MASTERS_LOCK = new Date("2026-04-09T19:00:00Z"); // 12pm PT Thursday
+export var MASTERS_LOCK = new Date("2026-04-09T17:00:00Z"); // 10am PT Thursday
 export var PROPS_LOCK   = new Date("2026-04-12T14:00:00Z"); // 10am ET Saturday
 export var CUT_PENALTY  = 80;
 export var NUM_PROPS    = 10;

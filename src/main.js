@@ -162,7 +162,7 @@ async function init() {
           } else if (!state.myPropPicksSubmitted) {
             showPropPicks();
           } else {
-            showSummary();
+            showLeaderboard();
           }
         } else {
           localStorage.removeItem('pin_user_id');

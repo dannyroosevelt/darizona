@@ -1,44 +1,72 @@
 import state from './state.js';
-import { CUT_PENALTY, NAME_ALIASES } from './constants.js';
+import { CUT_PENALTY, NAME_ALIASES, MASTERS_LOCK } from './constants.js';
 import { normName } from './utils.js';
-
-import { MASTERS_LOCK } from './constants.js';
 
 export function fetchESPN() {
   // Don't hit ESPN before the tournament — just return pre status
   if (new Date() < MASTERS_LOCK) {
     return Promise.resolve({ status: "pre", scores: {}, leader: null });
   }
-  return fetch("https://site.api.espn.com/apis/site/v2/sports/golf/pga/leaderboard")
-    .then(function(r) { if (!r.ok) throw new Error("ESPN " + r.status); return r.json(); })
-    .then(function(data) {
-      var events = data.events || [], ev = null;
-      for (var i = 0; i < events.length; i++) {
-        if ((events[i].name || "").toLowerCase().indexOf("masters") !== -1) { ev = events[i]; break; }
+  // 2026 Masters Tournament — hardcoded event ID, no search needed
+  var EVENT_ID = "401811941";
+  var LEADERBOARD_URL = "https://site.web.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=" + EVENT_ID;
+  var SCOREBOARD_URL  = "https://site.web.api.espn.com/apis/personalized/v2/scoreboard/header?sport=golf&league=pga&region=us&lang=en&contentorigin=espn";
+  return fetch(LEADERBOARD_URL)
+    .then(function(r) {
+      if (!r.ok) {
+        console.warn("[ESPN] leaderboard URL failed (" + r.status + "), falling back to scoreboard header");
+        return fetch(SCOREBOARD_URL).then(function(r2) { if (!r2.ok) throw new Error("ESPN fallback " + r2.status); return r2.json(); });
       }
-      if (!ev) ev = events[0];
+      return r.json();
+    })
+    .then(function(data) {
+      // Full leaderboard format: { events: [{ competitions: [{ competitors: [...] }] }] }
+      // Scoreboard header format: { sports: [{ leagues: [{ events: [{ competitors: [...] }] }] }] }
+      var ev = null, competitors = [], isFlat = false;
+      if (data.events && data.events.length > 0) {
+        ev = data.events[0];
+        competitors = (ev.competitions && ev.competitions[0] && ev.competitions[0].competitors) || [];
+      } else if (data.sports) {
+        var league = data.sports[0] && data.sports[0].leagues && data.sports[0].leagues[0];
+        ev = league && league.events && league.events[0];
+        competitors = (ev && ev.competitors) || [];
+        isFlat = true;
+      }
       if (!ev) return { status: "notfound", scores: {}, leader: null };
+      console.log("[ESPN] event:", ev.name, "| competitors:", competitors.length, "| flat:", isFlat);
 
-      var rawStatus = (ev.status && ev.status.type && ev.status.type.name) || "";
+      // Detect tournament status — handle both formats
+      var rawStatus = (ev.status && ev.status.type && ev.status.type.name)
+                   || (ev.fullStatus && ev.fullStatus.type && ev.fullStatus.type.name)
+                   || "";
       var status = "pre";
-      if (rawStatus === "STATUS_IN_PROGRESS" || rawStatus === "in" || rawStatus.indexOf("PROGRESS") !== -1) status = "in";
-      else if (rawStatus === "STATUS_FINAL" || rawStatus === "STATUS_COMPLETE" || rawStatus.indexOf("FINAL") !== -1 || rawStatus.indexOf("COMPLETE") !== -1) status = "post";
+      if (ev.status === "in" || rawStatus === "STATUS_IN_PROGRESS" || rawStatus.indexOf("PROGRESS") !== -1) status = "in";
+      else if (ev.status === "post" || rawStatus === "STATUS_FINAL" || rawStatus === "STATUS_COMPLETE" || rawStatus.indexOf("FINAL") !== -1 || rawStatus.indexOf("COMPLETE") !== -1) status = "post";
 
-      var competitors = (ev.competitions && ev.competitions[0] && ev.competitions[0].competitors) || [];
       var scores = {}, leader = null;
       competitors.forEach(function(c) {
-        var name = (c.athlete && c.athlete.displayName) || "";
-        var pos = (c.status && c.status.position && c.status.position.displayName) || "--";
-        var score = (c.score && c.score.displayValue) || "E";
-        var cStatus = (c.status && c.status.type && c.status.type.name) || "active";
-        var isCut = cStatus === "STATUS_CUT" || cStatus === "cut" || pos === "CUT" || cStatus.indexOf("CUT") !== -1 || cStatus.indexOf("WD") !== -1 || cStatus.indexOf("DQ") !== -1;
+        // Flat format (scoreboard): c.displayName, c.score (string), c.place (number), c.status.name
+        // Nested format (leaderboard): c.athlete.displayName, c.score.displayValue, c.status.type.name, c.status.position.displayName
+        var name = c.displayName || (c.athlete && c.athlete.displayName) || "";
+        var score = (typeof c.score === "string" ? c.score : (c.score && c.score.displayValue)) || "E";
+        var cStatusName = (c.status && c.status.name) || (c.status && c.status.type && c.status.type.name) || "";
+        var posStr = (c.status && c.status.position && c.status.position.displayName) || "--";
+        var isCut = cStatusName.indexOf("CUT") !== -1 || cStatusName.indexOf("WD") !== -1 || cStatusName.indexOf("DQ") !== -1 || posStr === "CUT" || score === "CUT";
         var thru = (c.status && c.status.displayValue) || "--";
         var ls = c.linescores || [], rounds = ["--", "--", "--", "--"];
         for (var r = 0; r < Math.min(ls.length, 4); r++) rounds[r] = (ls[r].displayValue || ls[r].value || "--").toString();
         var posNum = 999;
-        if (!isCut && pos !== "--") { var n = parseInt(pos.replace(/[^0-9]/g, "")); if (!isNaN(n)) posNum = n; }
+        if (!isCut) {
+          if (typeof c.place === "number") {
+            posNum = c.place;
+          } else if (posStr !== "--" && posStr !== "CUT") {
+            var n = parseInt(posStr.replace(/[^0-9]/g, ""));
+            if (!isNaN(n)) posNum = n;
+          }
+        }
         if (isCut) posNum = CUT_PENALTY;
-        var entry = { pos: pos, score: score, status: isCut ? "cut" : "active", posNum: posNum, rawName: name, thru: thru, r1: rounds[0], r2: rounds[1], r3: rounds[2], r4: rounds[3] };
+        var displayPos = isCut ? "CUT" : (posStr !== "--" ? posStr : (typeof c.place === "number" ? (c.place === 1 ? "1" : "T" + c.place) : "--"));
+        var entry = { pos: displayPos, score: score, status: isCut ? "cut" : "active", posNum: posNum, rawName: name, thru: thru, r1: rounds[0], r2: rounds[1], r3: rounds[2], r4: rounds[3] };
         scores[normName(name)] = entry;
         if (!isCut && (!leader || posNum < leader.posNum)) leader = entry;
       });
@@ -59,5 +87,6 @@ export function lookupScore(name) {
   for (var k in state.espnScores) {
     if (k.indexOf(norm) !== -1 || norm.indexOf(k) !== -1) return state.espnScores[k];
   }
+  console.warn("[ESPN] no score found for:", name, "(normalized:", norm + ")");
   return null;
 }
