@@ -41,7 +41,12 @@ export function scoreClass(s) {
 export function renderLeaderboard(er) {
   var players = state.players || [];
   var pool = state.poolData || {};
-  var n = players.length, pot = n * (pool.buyin || 20);
+  var submittedCount = players.filter(function(p) {
+    var uid = p.user_id;
+    if (uid === state.userId) return state.myPicksSubmitted;
+    return Object.keys(state.allPicks[uid] || {}).length >= 6;
+  }).length;
+  var n = players.length, pot = submittedCount * (pool.buyin || 20);
   var prize1 = Math.round(pot * .7), prize2 = Math.round(pot * .3);
   var tStatus = er ? er.status : "error", leader = er ? er.leader : null;
   var live = tStatus === "in" || tStatus === "post";

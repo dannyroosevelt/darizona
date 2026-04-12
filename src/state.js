@@ -25,6 +25,7 @@ var state = {
   // picks from supabase for all players (populated after RLS allows it)
   allPicks: {},        // { [userId]: { 1: name, ..., 6: name } }
   allPropPicks: {},    // { [userId]: { [propId]: value } }
+  submittedPropUsers: new Set(), // user_ids who submitted prop picks
   propResults: {},     // { [propId]: value }
 
   // ui state

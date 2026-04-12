@@ -19,9 +19,11 @@ export async function showSummary() {
         state.allPicks[r.user_id][r.tier] = r.golfer_name;
       });
       state.allPropPicks = {};
+      state.submittedPropUsers = new Set();
       propRows.forEach(function(r) {
         if (!state.allPropPicks[r.user_id]) state.allPropPicks[r.user_id] = {};
         state.allPropPicks[r.user_id][r.prop_id] = r.value;
+        if (r.submitted) state.submittedPropUsers.add(r.user_id);
       });
       state.propResults = {};
       resultRows.forEach(function(r) { state.propResults[r.prop_id] = r.value; });
@@ -34,7 +36,13 @@ export async function showSummary() {
 export function renderSummary() {
   var players = state.players || [];
   var pool = state.poolData || {};
-  var n = players.length, t = n * (pool.buyin || 20);
+  var n = players.length;
+  var submittedCount = players.filter(function(p) {
+    var uid = p.user_id;
+    if (uid === state.userId) return state.myPicksSubmitted;
+    return Object.keys(state.allPicks[uid] || {}).length >= 6;
+  }).length;
+  var t = submittedCount * (pool.buyin || 20);
   document.getElementById("sum-meta").textContent = n + " donks \u00b7 $" + (pool.buyin || 20) + " buy-in";
   document.getElementById("sum-total").textContent = "$" + t;
   document.getElementById("sum-1st").textContent = "$" + Math.round(t * .7);
@@ -81,7 +89,7 @@ function csvCell(v) {
 }
 function csvRow(arr) { return arr.map(csvCell).join(","); }
 
-function countCorrectCSV(uid, results) {
+function countCorrectCSV(uid, results, submittedPlayers) {
   var pp = state.allPropPicks[uid] || {};
   var correct = 0;
   PROPS.forEach(function(prop) {
@@ -91,7 +99,7 @@ function countCorrectCSV(uid, results) {
       if (String(pick) === String(result)) correct++;
     } else if (prop.type === "number") {
       var bestDiff = Infinity, bestLow = Infinity;
-      (state.players || []).forEach(function(p2) {
+      submittedPlayers.forEach(function(p2) {
         var p2pick = (state.allPropPicks[p2.user_id] || {})[prop.id];
         if (p2pick == null) return;
         var diff = Math.abs(parseInt(p2pick) - parseInt(result));
@@ -129,11 +137,16 @@ export function exportCSV() {
   lines.push(csvRow(["=== PROP PICKS === McDowell Mountain Saturday"]));
   var ph = ["Donk"]; PROPS.forEach(function(pr) { ph.push(pr.label); }); ph.push("Points");
   lines.push(csvRow(ph));
+  var submittedPropPlayers = players.filter(function(p) {
+    var uid = p.user_id;
+    if (uid === state.userId) return state.myPropPicksSubmitted;
+    return state.submittedPropUsers && state.submittedPropUsers.has(uid);
+  });
   players.forEach(function(player) {
     var pp = state.allPropPicks[player.user_id] || {};
     var row = [player.display_name];
     PROPS.forEach(function(pr) { var v = pp[pr.id]; row.push(v != null ? String(v) : ""); });
-    row.push(results ? countCorrectCSV(player.user_id, results) : "");
+    row.push(results ? countCorrectCSV(player.user_id, results, submittedPropPlayers) : "");
     lines.push(csvRow(row));
   });
   if (results) {
@@ -144,7 +157,12 @@ export function exportCSV() {
 
   lines.push(""); lines.push("");
   lines.push(csvRow(["=== MONEY SUMMARY ==="]));
-  var mp = players.length * (pool.buyin || 20), pp2 = players.length * (pool.prop_buyin || 10);
+  var mastersSubmittedCount = players.filter(function(p) {
+    var uid = p.user_id;
+    if (uid === state.userId) return state.myPicksSubmitted;
+    return Object.keys(state.allPicks[uid] || {}).length >= 6;
+  }).length;
+  var mp = mastersSubmittedCount * (pool.buyin || 20), pp2 = submittedPropPlayers.length * (pool.prop_buyin || 10);
   lines.push(csvRow(["Masters pot", "$" + mp, "1st (70%)", "$" + Math.round(mp * .7), "2nd (30%)", "$" + Math.round(mp * .3)]));
   lines.push(csvRow(["Props pot", "$" + pp2, "1st (90%)", "$" + Math.round(pp2 * .9), "2nd (10%)", "$" + Math.round(pp2 * .1)]));
 
