@@ -33,23 +33,27 @@ export function showFunSection(section) {
   if (section === "props") renderPropsView();
 }
 
+function getPick(uid, propId) {
+  return uid === state.userId ? state.myPropPicks[propId] : (state.allPropPicks[uid] || {})[propId];
+}
+
 function getPropWinners(prop, result, players) {
   var winners = [];
   if (prop.type === "player" || prop.type === "yes_no") {
     players.forEach(function(p) {
-      var pick = p.user_id === state.userId ? state.myPropPicks[prop.id] : (state.allPropPicks[p.user_id] || {})[prop.id];
+      var pick = getPick(p.user_id, prop.id);
       if (pick != null && String(pick) === String(result)) winners.push(p.display_name);
     });
   } else if (prop.type === "number") {
     var bestDiff = Infinity, bestLow = Infinity;
     players.forEach(function(p) {
-      var pick = p.user_id === state.userId ? state.myPropPicks[prop.id] : (state.allPropPicks[p.user_id] || {})[prop.id];
+      var pick = getPick(p.user_id, prop.id);
       if (pick == null) return;
       var diff = Math.abs(parseInt(pick) - parseInt(result));
       if (diff < bestDiff || (diff === bestDiff && parseInt(pick) < bestLow)) { bestDiff = diff; bestLow = parseInt(pick); }
     });
     players.forEach(function(p) {
-      var pick = p.user_id === state.userId ? state.myPropPicks[prop.id] : (state.allPropPicks[p.user_id] || {})[prop.id];
+      var pick = getPick(p.user_id, prop.id);
       if (pick == null) return;
       var diff = Math.abs(parseInt(pick) - parseInt(result));
       if (diff === bestDiff && parseInt(pick) === bestLow) winners.push(p.display_name);
@@ -70,6 +74,7 @@ export function renderPropsView() {
   var html = "";
   PROPS.forEach(function(prop) {
     var result = results[prop.id] != null ? results[prop.id] : null;
+    var winners = result != null ? getPropWinners(prop, result, players) : [];
     html += '<div class="prop-card">';
     html += '<div class="prop-header"><div>';
     html += '<div class="prop-label">' + prop.label + '</div>';
@@ -77,7 +82,6 @@ export function renderPropsView() {
     html += '</div></div>';
     html += '<div class="prop-body">';
     if (result != null) {
-      var winners = getPropWinners(prop, result, players);
       html += '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">Result: <span style="color:var(--green);">' + esc(String(result)) + '</span></div>';
       if (winners.length > 0) {
         html += '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">\uD83C\uDFC6 ' + winners.map(function(n) { return esc(n); }).join(', ') + '</div>';
@@ -87,23 +91,11 @@ export function renderPropsView() {
     players.forEach(function(player) {
       var uid = player.user_id;
       var isMe = uid === state.userId;
-      var myPickVal = isMe ? state.myPropPicks[prop.id] : (state.allPropPicks[uid] || {})[prop.id];
+      var myPickVal = getPick(uid, prop.id);
       var displayVal = myPickVal != null ? String(myPickVal) : "—";
       var indicator = "";
       if (result != null && myPickVal != null) {
-        var correct = false;
-        if (prop.type === "player" || prop.type === "yes_no") {
-          correct = String(myPickVal) === String(result);
-        } else if (prop.type === "number") {
-          var bestDiff = Infinity, bestLow = Infinity;
-          players.forEach(function(p2) {
-            var p2pick = p2.user_id === state.userId ? state.myPropPicks[prop.id] : (state.allPropPicks[p2.user_id] || {})[prop.id];
-            if (p2pick == null) return;
-            var diff = Math.abs(parseInt(p2pick) - parseInt(result));
-            if (diff < bestDiff || (diff === bestDiff && parseInt(p2pick) < bestLow)) { bestDiff = diff; bestLow = parseInt(p2pick); }
-          });
-          correct = Math.abs(parseInt(myPickVal) - parseInt(result)) === bestDiff && parseInt(myPickVal) === bestLow;
-        }
+        var correct = winners.indexOf(player.display_name) !== -1;
         indicator = correct
           ? '<span style="color:#064E3B;font-weight:700;margin-left:6px;">&#10003;</span>'
           : '<span style="color:#881337;font-weight:500;margin-left:6px;">&#10005;</span>';
@@ -182,17 +174,16 @@ export async function saveResults() {
 }
 
 function countCorrect(uid, results) {
-  var picks = uid === state.userId ? state.myPropPicks : (state.allPropPicks[uid] || {});
   var correct = 0;
   PROPS.forEach(function(prop) {
     var result = results[prop.id]; if (result == null) return;
-    var pick = picks[prop.id]; if (pick == null) return;
+    var pick = getPick(uid, prop.id); if (pick == null) return;
     if (prop.type === "player" || prop.type === "yes_no") {
       if (String(pick) === String(result)) correct++;
     } else if (prop.type === "number") {
       var bestDiff = Infinity, bestLow = Infinity;
       (state.players || []).forEach(function(p2) {
-        var p2pick = p2.user_id === state.userId ? state.myPropPicks[prop.id] : (state.allPropPicks[p2.user_id] || {})[prop.id];
+        var p2pick = getPick(p2.user_id, prop.id);
         if (p2pick == null) return;
         var diff = Math.abs(parseInt(p2pick) - parseInt(result));
         if (diff < bestDiff || (diff === bestDiff && parseInt(p2pick) < bestLow)) { bestDiff = diff; bestLow = parseInt(p2pick); }
@@ -206,8 +197,7 @@ function countCorrect(uid, results) {
 
 function darrenScoreDiff(uid, results) {
   var actual = results["darren_score"]; if (actual == null) return 9999;
-  var picks = uid === state.userId ? state.myPropPicks : (state.allPropPicks[uid] || {});
-  var guess = picks["darren_score"]; if (guess == null) return 9999;
+  var guess = getPick(uid, "darren_score"); if (guess == null) return 9999;
   return Math.abs(parseInt(guess) - parseInt(actual));
 }
 
@@ -222,9 +212,7 @@ function calculateAndShowPayouts(results) {
     if (scores[b.user_id] !== scores[a.user_id]) return scores[b.user_id] - scores[a.user_id];
     var da = darrenScoreDiff(a.user_id, results), db = darrenScoreDiff(b.user_id, results);
     if (da !== db) return da - db;
-    var picks_a = a.user_id === state.userId ? state.myPropPicks : (state.allPropPicks[a.user_id] || {});
-    var picks_b = b.user_id === state.userId ? state.myPropPicks : (state.allPropPicks[b.user_id] || {});
-    return (parseInt(picks_a["darren_score"]) || 9999) - (parseInt(picks_b["darren_score"]) || 9999);
+    return (parseInt(getPick(a.user_id, "darren_score")) || 9999) - (parseInt(getPick(b.user_id, "darren_score")) || 9999);
   });
   var answeredCount = Object.keys(results).length;
   var darrenActual = results["darren_score"];
