@@ -106,9 +106,11 @@ async function loadPool(poolId) {
   });
 
   state.allPropPicks = {};
+  state.submittedPropUsers = new Set();
   allPropRows.forEach(r => {
     if (!state.allPropPicks[r.user_id]) state.allPropPicks[r.user_id] = {};
     state.allPropPicks[r.user_id][r.prop_id] = r.value;
+    if (r.submitted) state.submittedPropUsers.add(r.user_id);
   });
 
   state.propResults = {};

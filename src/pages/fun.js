@@ -12,9 +12,11 @@ export async function showFun() {
         getPropResults(state.poolId),
       ]);
       state.allPropPicks = {};
+      state.submittedPropUsers = new Set();
       propRows.forEach(function(r) {
         if (!state.allPropPicks[r.user_id]) state.allPropPicks[r.user_id] = {};
         state.allPropPicks[r.user_id][r.prop_id] = r.value;
+        if (r.submitted) state.submittedPropUsers.add(r.user_id);
       });
       state.propResults = {};
       resultRows.forEach(function(r) { state.propResults[r.prop_id] = r.value; });
@@ -68,13 +70,18 @@ export function renderPropsView() {
   var pot = perPropPot();
   var showAdmin = isCommissioner();
   document.getElementById("props-admin-btn").style.display = showAdmin ? "block" : "none";
-  var totalPropPot = players.length * ((state.poolData && state.poolData.prop_buyin) || 10);
+  var submittedPlayers = players.filter(function(p) {
+    var uid = p.user_id;
+    if (uid === state.userId) return state.myPropPicksSubmitted;
+    return state.submittedPropUsers && state.submittedPropUsers.has(uid);
+  });
+  var totalPropPot = submittedPlayers.length * ((state.poolData && state.poolData.prop_buyin) || 10);
   document.getElementById("props-subtitle").textContent = "McDowell Mountain \u00b7 Saturday \u00b7 1 pt per correct answer \u00b7 90/10 payout \u00b7 $" + totalPropPot + " pot";
 
   var html = "";
   PROPS.forEach(function(prop) {
     var result = results[prop.id] != null ? results[prop.id] : null;
-    var winners = result != null ? getPropWinners(prop, result, players) : [];
+    var winners = result != null ? getPropWinners(prop, result, submittedPlayers) : [];
     html += '<div class="prop-card">';
     html += '<div class="prop-header"><div>';
     html += '<div class="prop-label">' + prop.label + '</div>';
@@ -173,7 +180,7 @@ export async function saveResults() {
   } catch(e) { alert("Save failed.\n\n" + e.message); }
 }
 
-function countCorrect(uid, results) {
+function countCorrect(uid, results, players) {
   var correct = 0;
   PROPS.forEach(function(prop) {
     var result = results[prop.id]; if (result == null) return;
@@ -182,7 +189,7 @@ function countCorrect(uid, results) {
       if (String(pick) === String(result)) correct++;
     } else if (prop.type === "number") {
       var bestDiff = Infinity, bestLow = Infinity;
-      (state.players || []).forEach(function(p2) {
+      players.forEach(function(p2) {
         var p2pick = getPick(p2.user_id, prop.id);
         if (p2pick == null) return;
         var diff = Math.abs(parseInt(p2pick) - parseInt(result));
@@ -202,12 +209,17 @@ function darrenScoreDiff(uid, results) {
 }
 
 function calculateAndShowPayouts(results) {
-  var players = state.players || [];
+  var allPlayers = state.players || [];
+  var players = allPlayers.filter(function(p) {
+    var uid = p.user_id;
+    if (uid === state.userId) return state.myPropPicksSubmitted;
+    return state.submittedPropUsers && state.submittedPropUsers.has(uid);
+  });
   var propBuyin = (state.poolData && state.poolData.prop_buyin) || 10;
   var totalPot = players.length * propBuyin;
   var prize1 = Math.round(totalPot * 0.9), prize2 = totalPot - prize1;
   var scores = {};
-  players.forEach(function(p) { scores[p.user_id] = countCorrect(p.user_id, results); });
+  players.forEach(function(p) { scores[p.user_id] = countCorrect(p.user_id, results, players); });
   var sorted = players.slice().sort(function(a, b) {
     if (scores[b.user_id] !== scores[a.user_id]) return scores[b.user_id] - scores[a.user_id];
     var da = darrenScoreDiff(a.user_id, results), db = darrenScoreDiff(b.user_id, results);
