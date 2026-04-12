@@ -1,6 +1,6 @@
 import state from '../state.js';
 import { PROPS, NUM_PROPS } from '../constants.js';
-import { show, isCommissioner, perPropPot, fmtTime } from '../utils.js';
+import { show, isCommissioner, perPropPot, fmtTime, esc } from '../utils.js';
 import { getAllPropPicks, getPropResults, savePropResults } from '../supabase.js';
 
 export async function showFun() {
@@ -33,6 +33,31 @@ export function showFunSection(section) {
   if (section === "props") renderPropsView();
 }
 
+function getPropWinners(prop, result, players) {
+  var winners = [];
+  if (prop.type === "player" || prop.type === "yes_no") {
+    players.forEach(function(p) {
+      var pick = p.user_id === state.userId ? state.myPropPicks[prop.id] : (state.allPropPicks[p.user_id] || {})[prop.id];
+      if (pick != null && String(pick) === String(result)) winners.push(p.display_name);
+    });
+  } else if (prop.type === "number") {
+    var bestDiff = Infinity, bestLow = Infinity;
+    players.forEach(function(p) {
+      var pick = p.user_id === state.userId ? state.myPropPicks[prop.id] : (state.allPropPicks[p.user_id] || {})[prop.id];
+      if (pick == null) return;
+      var diff = Math.abs(parseInt(pick) - parseInt(result));
+      if (diff < bestDiff || (diff === bestDiff && parseInt(pick) < bestLow)) { bestDiff = diff; bestLow = parseInt(pick); }
+    });
+    players.forEach(function(p) {
+      var pick = p.user_id === state.userId ? state.myPropPicks[prop.id] : (state.allPropPicks[p.user_id] || {})[prop.id];
+      if (pick == null) return;
+      var diff = Math.abs(parseInt(pick) - parseInt(result));
+      if (diff === bestDiff && parseInt(pick) === bestLow) winners.push(p.display_name);
+    });
+  }
+  return winners;
+}
+
 export function renderPropsView() {
   var players = state.players || [];
   var results = state.propResults || {};
@@ -52,7 +77,11 @@ export function renderPropsView() {
     html += '</div></div>';
     html += '<div class="prop-body">';
     if (result != null) {
-      html += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">Result: <span style="color:var(--green);">' + result + '</span></div>';
+      var winners = getPropWinners(prop, result, players);
+      html += '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">Result: <span style="color:var(--green);">' + esc(String(result)) + '</span></div>';
+      if (winners.length > 0) {
+        html += '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">\uD83C\uDFC6 ' + winners.map(function(n) { return esc(n); }).join(', ') + '</div>';
+      }
     }
     html += '<table class="prop-picks-table">';
     players.forEach(function(player) {

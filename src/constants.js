@@ -1,13 +1,11 @@
 export var MASTERS_LOCK = new Date("2026-04-09T17:00:00Z"); // 10am PT Thursday
 export var PROPS_LOCK   = new Date("2026-04-12T14:00:00Z"); // 10am ET Saturday
 export var CUT_PENALTY  = 80;
-export var NUM_PROPS    = 10;
+export var NUM_PROPS    = 8;
 
 export var PROPS = [
   { id:"low_gross",     label:"Lowest gross score",              type:"player",     q:"Who shoots the lowest gross score in the group on Saturday?" },
   { id:"high_gross",    label:"Highest gross score",             type:"player",     q:"Who shoots the highest gross score? (not counting anyone who leaves early)" },
-  { id:"long_drive",    label:"Longest drive",                   type:"player",     q:"Who hits the longest drive? Commissioner picks the hole on the day." },
-  { id:"closest_pin",   label:"Closest to the pin",              type:"player",     q:"Who is closest to the pin on the designated par 3? (announced on course)" },
   { id:"first_lost",    label:"First lost ball",                 type:"player",     q:"Who loses the very first ball of the round?" },
   { id:"high_hole",     label:"Highest score on one hole",       type:"number",     q:"What is the highest score anyone makes on a single hole? Closest guess wins (tie: lower guess wins)." },
   { id:"darren_score",  label:"Darren's exact score",            type:"number",     q:"What does Darren shoot for 18 holes? Closest guess wins (tie: lower guess wins)." },

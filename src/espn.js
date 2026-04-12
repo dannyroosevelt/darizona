@@ -63,7 +63,16 @@ export function fetchESPN() {
         var thru = "--";
         if (c.status) {
           if (c.status.displayThru != null) thru = String(c.status.displayThru);
-          else if (c.status.displayValue) thru = c.status.displayValue.replace(/^Thru\s+/i, "");
+          else if (c.status.displayValue) {
+            var dv = c.status.displayValue.replace(/^Thru\s+/i, "");
+            // If it looks like an ISO timestamp (tee time for players not yet on course), format as local time
+            if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dv)) {
+              var d = new Date(dv);
+              thru = isNaN(d) ? dv : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            } else {
+              thru = dv;
+            }
+          }
         }
         var ls = c.linescores || [], rounds = ["--", "--", "--", "--"];
         for (var r = 0; r < Math.min(ls.length, 4); r++) rounds[r] = (ls[r].displayValue || ls[r].value || "--").toString();
